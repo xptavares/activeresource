@@ -2,6 +2,7 @@ module ActiveResource
   module Formats
     autoload :XmlFormat, 'active_resource/formats/xml_format'
     autoload :JsonFormat, 'active_resource/formats/json_format'
+    autoload :JsonApiFormat, 'active_resource/formats/json_api_format'
 
     # Lookup the format class from a mime type reference symbol. Example:
     #
@@ -12,7 +13,8 @@ module ActiveResource
     end
 
     def self.remove_root(data)
-      if data.is_a?(Hash) && data.keys.size == 1
+      if data.is_a?(Hash) && (data.keys.size == 1 || data.keys.include?("data"))
+        return data["data"] if data.keys.include?("data")
         data.values.first
       else
         data

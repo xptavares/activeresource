@@ -1329,8 +1329,8 @@ module ActiveResource
     # Returns the serialized string representation of the resource in the configured
     # serialization format specified in ActiveResource::Base.format. The options
     # applicable depend on the configured encoding format.
-    def encode(options={})
-      send("to_#{self.class.format.extension}", options)
+    def encode(options = {})
+      self.class.format.encode(self, options)
     end
 
     # A method to \reload the attributes of this object from the remote web service.
@@ -1379,26 +1379,13 @@ module ActiveResource
 
       attributes = Formats.remove_root(attributes) if remove_root
 
-      attributes.each do |key, value|
-        @attributes[key.to_s] =
-          case value
-            when Array
-              resource = nil
-              value.map do |attrs|
-                if attrs.is_a?(Hash)
-                  resource ||= find_or_create_resource_for_collection(key)
-                  resource.new(attrs, persisted)
-                else
-                  attrs.duplicable? ? attrs.dup : attrs
-                end
-              end
-            when Hash
-              resource = find_or_create_resource_for(key)
-              resource.new(value, persisted)
-            else
-              value.duplicable? ? value.dup : value
-          end
+      case self.class.format
+      when ActiveResource::Formats::JsonApiFormat
+        load_attributes_for_json_api(attributes, remove_root, persisted)
+      else
+        load_attributes(attributes, remove_root, persisted)
       end
+
       self
     end
 
@@ -1594,6 +1581,64 @@ module ActiveResource
           super
         end
       end
+
+      def load_attributes(attributes, remove_root, persisted)
+        attributes.each do |key, value|
+          @attributes[key.to_s] =
+            case value
+              when Array
+                resource = nil
+                value.map do |attrs|
+                  if attrs.is_a?(Hash)
+                    resource ||= find_or_create_resource_for_collection(key)
+                    resource.new(attrs, persisted)
+                  else
+                    attrs.duplicable? ? attrs.dup : attrs
+                  end
+                end
+              when Hash
+                resource = find_or_create_resource_for(key)
+                resource.new(value, persisted)
+              else
+                value.duplicable? ? value.dup : value
+            end
+        end
+      end
+
+      def load_attributes_for_json_api(attributes, remove_root, persisted)
+        attributes.each do |key, value|
+          if key.to_s == 'attributes'
+            value.each do |k, v|
+              @attributes[normalise_key(k)] = v.duplicable? ? v.dup : v
+            end
+          elsif key.to_s == 'relationships'
+
+          else
+            @attributes[normalise_key(key)] =
+              case value
+                when Array
+                  resource = nil
+                  value.map do |attrs|
+                    if attrs.is_a?(Hash)
+                      resource ||= find_or_create_resource_for_collection(key)
+                      resource.new(attrs, persisted)
+                    else
+                      attrs.duplicable? ? attrs.dup : attrs
+                    end
+                  end
+                when Hash
+                  resource = find_or_create_resource_for(key)
+                  resource.new(value, persisted)
+                else
+                  value.duplicable? ? value.dup : value
+              end
+          end
+        end
+      end
+
+    def normalise_key(key)
+      key.to_s.tr("-", "_")
+    end
   end
 
   class Base
@@ -1609,4 +1654,3 @@ module ActiveResource
 
   ActiveSupport.run_load_hooks(:active_resource, Base)
 end
-
